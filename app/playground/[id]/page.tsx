@@ -31,6 +31,7 @@ import { usePlayground } from "@/modules/playground/hooks/usePlayground";
 import { findFilePath } from "@/modules/playground/lib";
 import { RemoteCursorStyles } from "@/modules/collaboration/components/remote-cursor-styles";
 import { useYjsRoom } from "@/modules/collaboration/hooks/useYjsRoom";
+import { useSyncedFileTree } from "@/modules/collaboration/hooks/useSyncedFileTree";
 import { colorForId } from "@/modules/collaboration/lib/color";
 import { useCurrentUser } from "@/modules/auth/hooks/use-current-user";
 import {
@@ -92,6 +93,7 @@ const MainPlaygroundPage = () => {
     const aiSuggestions = useAISuggestions();
 
   const {
+    templateData: liveTemplateData,
     setTemplateData,
     setActiveFileId,
     setPlaygroundId,
@@ -111,6 +113,8 @@ const MainPlaygroundPage = () => {
     updateFileContent
   } = useFileExplorer();
 
+  useSyncedFileTree(ydoc, templateData);
+
   const {
     serverUrl,
     isLoading: containerLoading,
@@ -126,13 +130,7 @@ const MainPlaygroundPage = () => {
     setPlaygroundId(id);
   }, [id, setPlaygroundId]);
 
-  useEffect(() => {
-    if (templateData && !openFiles.length) {
-      setTemplateData(templateData);
-    }
-  }, [templateData, setTemplateData, openFiles.length]);
-
-  // Create wrapper functions that pass saveTemplateData
+  // Create wrapper functions that pass saveTemplateData and the collaboration doc
   const wrappedHandleAddFile = useCallback(
     (newFile: TemplateFile, parentPath: string) => {
       return handleAddFile(
@@ -140,31 +138,32 @@ const MainPlaygroundPage = () => {
         parentPath,
         writeFileSync!,
         instance,
-        saveTemplateData
+        saveTemplateData,
+        ydoc
       );
     },
-    [handleAddFile, writeFileSync, instance, saveTemplateData]
+    [handleAddFile, writeFileSync, instance, saveTemplateData, ydoc]
   );
 
   const wrappedHandleAddFolder = useCallback(
     (newFolder: TemplateFolder, parentPath: string) => {
-      return handleAddFolder(newFolder, parentPath, instance, saveTemplateData);
+      return handleAddFolder(newFolder, parentPath, instance, saveTemplateData, ydoc);
     },
-    [handleAddFolder, instance, saveTemplateData]
+    [handleAddFolder, instance, saveTemplateData, ydoc]
   );
 
   const wrappedHandleDeleteFile = useCallback(
     (file: TemplateFile, parentPath: string) => {
-      return handleDeleteFile(file, parentPath, saveTemplateData);
+      return handleDeleteFile(file, parentPath, saveTemplateData, ydoc);
     },
-    [handleDeleteFile, saveTemplateData]
+    [handleDeleteFile, saveTemplateData, ydoc]
   );
 
   const wrappedHandleDeleteFolder = useCallback(
     (folder: TemplateFolder, parentPath: string) => {
-      return handleDeleteFolder(folder, parentPath, saveTemplateData);
+      return handleDeleteFolder(folder, parentPath, saveTemplateData, ydoc);
     },
-    [handleDeleteFolder, saveTemplateData]
+    [handleDeleteFolder, saveTemplateData, ydoc]
   );
 
   const wrappedHandleRenameFile = useCallback(
@@ -179,10 +178,11 @@ const MainPlaygroundPage = () => {
         newFilename,
         newExtension,
         parentPath,
-        saveTemplateData
+        saveTemplateData,
+        ydoc
       );
     },
-    [handleRenameFile, saveTemplateData]
+    [handleRenameFile, saveTemplateData, ydoc]
   );
 
   const wrappedHandleRenameFolder = useCallback(
@@ -191,10 +191,11 @@ const MainPlaygroundPage = () => {
         folder,
         newFolderName,
         parentPath,
-        saveTemplateData
+        saveTemplateData,
+        ydoc
       );
     },
-    [handleRenameFolder, saveTemplateData]
+    [handleRenameFolder, saveTemplateData, ydoc]
   );
 
   const activeFile = openFiles.find((file) => file.id === activeFileId);
@@ -395,7 +396,7 @@ const MainPlaygroundPage = () => {
       <>
         <RemoteCursorStyles awareness={awareness} />
         <TemplateFileTree
-          data={templateData!}
+          data={liveTemplateData ?? templateData!}
           onFileSelect={handleFileSelect}
           selectedFile={activeFile}
           title="File Explorer"
