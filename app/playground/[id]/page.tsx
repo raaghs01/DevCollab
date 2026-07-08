@@ -21,20 +21,39 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import dynamic from "next/dynamic";
 import LoadingStep from "@/modules/playground/components/loader";
-import {PlaygroundEditor} from "@/modules/playground/components/playground-editor";
 import { TemplateFileTree } from "@/modules/playground/components/playground-explorer";
 import ToggleAI from "@/modules/playground/components/toggle-ai";
 import { useAISuggestions } from "@/modules/playground/hooks/useAISuggestion";
 import { useFileExplorer } from "@/modules/playground/hooks/useFileExplorer";
 import { usePlayground } from "@/modules/playground/hooks/usePlayground";
 import { findFilePath } from "@/modules/playground/lib";
+import { RemoteCursorStyles } from "@/modules/collaboration/components/remote-cursor-styles";
+import { useYjsRoom } from "@/modules/collaboration/hooks/useYjsRoom";
+import { colorForId } from "@/modules/collaboration/lib/color";
+import { useCurrentUser } from "@/modules/auth/hooks/use-current-user";
 import {
   TemplateFile,
   TemplateFolder,
 } from "@/modules/playground/lib/path-to-json";
-import WebContainerPreview from "@/modules/webcontainers/components/webcontainer-preview";
 import { useWebContainer } from "@/modules/webcontainers/hooks/useWebContainer";
+
+// Monaco (via y-monaco) and xterm.js both touch browser globals (`window`,
+// `self`) at module load time, which crashes Next's SSR pass of this
+// "use client" page. Neither has any SSR/SEO value anyway — load them
+// client-only.
+const PlaygroundEditor = dynamic(
+  () =>
+    import("@/modules/playground/components/playground-editor").then(
+      (m) => m.PlaygroundEditor
+    ),
+  { ssr: false }
+);
+const WebContainerPreview = dynamic(
+  () => import("@/modules/webcontainers/components/webcontainer-preview"),
+  { ssr: false }
+);
 import {
   AlertCircle,
   Bot,
@@ -60,6 +79,15 @@ const MainPlaygroundPage = () => {
 
   const { playgroundData, templateData, isLoading, error, saveTemplateData } =
     usePlayground(id);
+
+  const currentUser = useCurrentUser();
+  const roomId = (playgroundData as { roomId?: string } | null)?.roomId ?? null;
+  const identity = {
+    name: currentUser?.name || currentUser?.email || "Guest",
+    color: colorForId(currentUser?.id || currentUser?.email || "guest"),
+    userId: currentUser?.id ?? null,
+  };
+  const { ydoc, awareness } = useYjsRoom(roomId, identity);
 
     const aiSuggestions = useAISuggestions();
 
@@ -349,9 +377,23 @@ const MainPlaygroundPage = () => {
     );
   }
 
+  // Waiting for the Yjs room to spin up so the editor doesn't briefly render
+  // an empty, unbound model before the collaborative document is ready.
+  if (roomId && !ydoc) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] p-4 gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+        <p className="text-sm text-muted-foreground">
+          Connecting to collaboration session…
+        </p>
+      </div>
+    );
+  }
+
   return (
     <TooltipProvider>
       <>
+        <RemoteCursorStyles awareness={awareness} />
         <TemplateFileTree
           data={templateData!}
           onFileSelect={handleFileSelect}
@@ -496,10 +538,13 @@ const MainPlaygroundPage = () => {
                     <ResizablePanel defaultSize={isPreviewVisible ? 50 : 100}>
                       <PlaygroundEditor
                         activeFile={activeFile}
+                        filePath={activeFileId}
                         content={activeFile?.content || ""}
-                        onContentChange={(value) => 
+                        onContentChange={(value) =>
                           activeFileId && updateFileContent(activeFileId , value)
                         }
+                        ydoc={ydoc}
+                        awareness={awareness}
                         suggestion={aiSuggestions.suggestion}
                         suggestionLoading={aiSuggestions.isLoading}
                         suggestionPosition={aiSuggestions.position}

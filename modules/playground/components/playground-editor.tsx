@@ -1,15 +1,21 @@
 "use client"
 
-import { useRef, useEffect, useCallback } from "react"
+import { useRef, useEffect, useCallback, useState } from "react"
 import Editor, { type Monaco } from "@monaco-editor/react"
+import * as Y from "yjs"
+import { MonacoBinding } from "y-monaco"
+import type { Awareness } from "y-protocols/awareness"
 import { TemplateFile } from "../lib/path-to-json"
 import { configureMonaco, defaultEditorOptions, getEditorLanguage } from "../lib/editor-config"
 
 
 interface PlaygroundEditorProps {
   activeFile: TemplateFile | undefined
+  filePath: string | null
   content: string
   onContentChange: (value: string) => void
+  ydoc: Y.Doc | null
+  awareness: Awareness | null
   suggestion: string | null
   suggestionLoading: boolean
   suggestionPosition: { line: number; column: number } | null
@@ -20,8 +26,11 @@ interface PlaygroundEditorProps {
 
 export const PlaygroundEditor = ({
   activeFile,
+  filePath,
   content,
   onContentChange,
+  ydoc,
+  awareness,
   suggestion,
   suggestionLoading,
   suggestionPosition,
@@ -31,6 +40,13 @@ export const PlaygroundEditor = ({
 }: PlaygroundEditorProps) => {
   const editorRef = useRef<any>(null)
   const monacoRef = useRef<Monaco | null>(null)
+  const [isEditorReady, setIsEditorReady] = useState(false)
+  const modelCacheRef = useRef<Map<string, any>>(new Map())
+  const bindingRef = useRef<MonacoBinding | null>(null)
+  const onContentChangeRef = useRef(onContentChange)
+  onContentChangeRef.current = onContentChange
+  const contentRef = useRef(content)
+  contentRef.current = content
   const inlineCompletionProviderRef = useRef<any>(null)
   const currentSuggestionRef = useRef<{
     text: string
@@ -482,25 +498,60 @@ export const PlaygroundEditor = ({
       }
     })
 
-    updateEditorLanguage()
+    setIsEditorReady(true)
   }
 
-  const updateEditorLanguage = () => {
-    if (!activeFile || !monacoRef.current || !editorRef.current) return
-    const model = editorRef.current.getModel()
-    if (!model) return
-
-    const language = getEditorLanguage(activeFile.fileExtension || "")
-    try {
-      monacoRef.current.editor.setModelLanguage(model, language)
-    } catch (error) {
-      console.warn("Failed to set editor language:", error)
-    }
-  }
-
+  // Binds the active file's Y.Text to a Monaco model. Monaco is uncontrolled
+  // here on purpose: MonacoBinding owns the model's content once bound, and
+  // fighting it with a React-controlled `value` prop causes cursor jumps and
+  // dropped remote edits. One model per file path is cached for the lifetime
+  // of this component so switching tabs preserves undo history and scroll state.
   useEffect(() => {
-    updateEditorLanguage()
-  }, [activeFile])
+    if (!isEditorReady || !editorRef.current || !monacoRef.current || !ydoc || !filePath) return
+
+    const monaco = monacoRef.current
+    const editor = editorRef.current
+    const language = getEditorLanguage(activeFile?.fileExtension || "")
+
+    const uri = monaco.Uri.parse(`file:///${filePath}`)
+    let model = modelCacheRef.current.get(filePath) ?? monaco.editor.getModel(uri)
+    if (!model) {
+      model = monaco.editor.createModel("", language, uri)
+    }
+    modelCacheRef.current.set(filePath, model)
+    editor.setModel(model)
+
+    const filesMap = ydoc.getMap<Y.Text>("files")
+    let ytext = filesMap.get(filePath)
+    if (!ytext) {
+      ytext = new Y.Text()
+      filesMap.set(filePath, ytext)
+    }
+    // Seed from the last saved content only if no collaborator has written to
+    // this file's Y.Text yet — a late joiner must see the live CRDT state, not
+    // re-seed over it (F4.8).
+    if (ytext.length === 0 && contentRef.current) {
+      ytext.insert(0, contentRef.current)
+    }
+
+    if (awareness) {
+      awareness.setLocalStateField("selection", null)
+      awareness.setLocalStateField("currentFile", filePath)
+    }
+
+    const binding = new MonacoBinding(ytext, model, new Set([editor]), awareness ?? undefined)
+    bindingRef.current = binding
+
+    const changeDisposable = model.onDidChangeContent(() => {
+      onContentChangeRef.current(model.getValue())
+    })
+
+    return () => {
+      changeDisposable.dispose()
+      binding.destroy()
+      if (bindingRef.current === binding) bindingRef.current = null
+    }
+  }, [isEditorReady, filePath, ydoc, awareness, activeFile?.fileExtension])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -516,6 +567,8 @@ export const PlaygroundEditor = ({
         tabCommandRef.current.dispose()
         tabCommandRef.current = null
       }
+      modelCacheRef.current.forEach((model) => model.dispose())
+      modelCacheRef.current.clear()
     }
   }, [])
 
@@ -539,10 +592,8 @@ export const PlaygroundEditor = ({
 
       <Editor
         height="100%"
-        value={content}
-        onChange={(value) => onContentChange(value || "")}
+        defaultLanguage="plaintext"
         onMount={handleEditorDidMount}
-        language={activeFile ? getEditorLanguage(activeFile.fileExtension || "") : "plaintext"}
         // @ts-ignore
         options={defaultEditorOptions}
       />
