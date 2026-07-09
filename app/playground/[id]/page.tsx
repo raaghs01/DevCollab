@@ -30,8 +30,12 @@ import { useFileExplorer } from "@/modules/playground/hooks/useFileExplorer";
 import { usePlayground } from "@/modules/playground/hooks/usePlayground";
 import { findFilePath } from "@/modules/playground/lib";
 import { RemoteCursorStyles } from "@/modules/collaboration/components/remote-cursor-styles";
+import { PresenceSidebar } from "@/modules/collaboration/components/presence-sidebar";
+import { OwnerTerminalFeed } from "@/modules/collaboration/components/owner-terminal-feed";
 import { useYjsRoom } from "@/modules/collaboration/hooks/useYjsRoom";
 import { useSyncedFileTree } from "@/modules/collaboration/hooks/useSyncedFileTree";
+import { useRoomSocket } from "@/modules/collaboration/hooks/useRoomSocket";
+import { useFollowMode } from "@/modules/collaboration/hooks/useFollowMode";
 import { colorForId } from "@/modules/collaboration/lib/color";
 import { useCurrentUser } from "@/modules/auth/hooks/use-current-user";
 import {
@@ -89,6 +93,7 @@ const MainPlaygroundPage = () => {
     userId: currentUser?.id ?? null,
   };
   const { ydoc, awareness } = useYjsRoom(roomId, identity);
+  const { socket, users, ownerSocketId, isOwner, wasKicked, kickUser } = useRoomSocket(roomId, identity);
 
     const aiSuggestions = useAISuggestions();
 
@@ -114,6 +119,13 @@ const MainPlaygroundPage = () => {
   } = useFileExplorer();
 
   useSyncedFileTree(ydoc, templateData);
+
+  const { followingClientId, toggleFollow } = useFollowMode({
+    awareness,
+    templateData: liveTemplateData,
+    activeFileId,
+    openFile,
+  });
 
   const {
     serverUrl,
@@ -391,6 +403,23 @@ const MainPlaygroundPage = () => {
     );
   }
 
+  if (wasKicked) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] p-4">
+        <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+        <h2 className="text-xl font-semibold text-red-600 mb-2">
+          Removed from room
+        </h2>
+        <p className="text-gray-600 mb-4">
+          The room owner removed you from this collaboration session.
+        </p>
+        <Button onClick={() => window.location.reload()} variant="outline">
+          Rejoin
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <TooltipProvider>
       <>
@@ -424,6 +453,17 @@ const MainPlaygroundPage = () => {
               </div>
 
               <div className="flex items-center gap-1">
+                <PresenceSidebar
+                  users={users}
+                  ownerSocketId={ownerSocketId}
+                  currentSocketId={socket?.id ?? null}
+                  isOwner={isOwner}
+                  awareness={awareness}
+                  followingClientId={followingClientId}
+                  onToggleFollow={toggleFollow}
+                  onKick={kickUser}
+                />
+
                 <Tooltip>
                   <TooltipTrigger>
                     <Button
@@ -564,15 +604,25 @@ const MainPlaygroundPage = () => {
                       <>
                         <ResizableHandle />
                         <ResizablePanel defaultSize={50}>
-                          <WebContainerPreview
-                            templateData={templateData}
-                            instance={instance}
-                            writeFileSync={writeFileSync}
-                            isLoading={containerLoading}
-                            error={containerError}
-                            serverUrl={serverUrl!}
-                            forceResetup={false}
-                          />
+                          <div className="h-full flex flex-col">
+                            <div className="flex-1 min-h-0">
+                              <WebContainerPreview
+                                templateData={templateData}
+                                instance={instance}
+                                writeFileSync={writeFileSync}
+                                isLoading={containerLoading}
+                                error={containerError}
+                                serverUrl={serverUrl!}
+                                forceResetup={false}
+                                roomSocket={socket}
+                                roomId={roomId}
+                                isRoomOwner={isOwner}
+                              />
+                            </div>
+                            {!isOwner && users.length > 1 && (
+                              <OwnerTerminalFeed socket={socket} />
+                            )}
+                          </div>
                         </ResizablePanel>
                       </>
                     )}

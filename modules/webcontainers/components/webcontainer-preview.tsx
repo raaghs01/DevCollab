@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { WebContainer } from "@webcontainer/api";
 import { TemplateFolder } from "@/modules/playground/lib/path-to-json";
 import TerminalComponent from "./terminal";
+import type { Socket } from "socket.io-client";
 
 interface WebContainerPreviewProps {
   templateData: TemplateFolder;
@@ -17,6 +18,11 @@ interface WebContainerPreviewProps {
   instance: WebContainer | null;
   writeFileSync: (path: string, content: string) => Promise<void>;
   forceResetup?: boolean; // Optional prop to force re-setup
+  // Room owner's install/dev-server output gets broadcast as a read-only
+  // spectator feed for the rest of the room (F5.2). No-op if either is unset.
+  roomSocket?: Socket | null;
+  roomId?: string | null;
+  isRoomOwner?: boolean;
 }
 const WebContainerPreview = ({
   templateData,
@@ -26,6 +32,9 @@ const WebContainerPreview = ({
   serverUrl,
   writeFileSync,
   forceResetup = false,
+  roomSocket,
+  roomId,
+  isRoomOwner,
 }: WebContainerPreviewProps) => {
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [loadingState, setLoadingState] = useState({
@@ -42,6 +51,12 @@ const WebContainerPreview = ({
   const [isSetupInProgress, setIsSetupInProgress] = useState(false);
 
   const terminalRef = useRef<any>(null);
+
+  const broadcastTerminalData = (data: string) => {
+    if (isRoomOwner && roomSocket && roomId) {
+      roomSocket.emit("terminal:output", { roomId, data });
+    }
+  };
 
   // Reset setup state when forceResetup changes
   useEffect(() => {
@@ -159,6 +174,7 @@ const WebContainerPreview = ({
               if (terminalRef.current?.writeToTerminal) {
                 terminalRef.current.writeToTerminal(data);
               }
+              broadcastTerminalData(data);
             },
           })
         );
@@ -217,6 +233,7 @@ const WebContainerPreview = ({
               if (terminalRef.current?.writeToTerminal) {
                 terminalRef.current.writeToTerminal(data);
               }
+              broadcastTerminalData(data);
             },
           })
         );
