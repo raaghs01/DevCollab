@@ -5,4 +5,6 @@ export const config = {
   nextInternalApiUrl: process.env.NEXT_INTERNAL_API_URL || "http://localhost:3000",
   internalSecret: process.env.REALTIME_SERVER_INTERNAL_SECRET || "dev-only-shared-secret",
   corsOrigin: process.env.CORS_ORIGIN || "http://localhost:3000",
+  // Max Yjs WS messages (sync or awareness) per connection per second (PRD §12).
+  yjsRateLimitPerSecond: Number(process.env.YJS_RATE_LIMIT_PER_SECOND || 100),
 };

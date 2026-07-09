@@ -5,6 +5,8 @@ import * as decoding from "lib0/decoding";
 import * as syncProtocol from "y-protocols/sync";
 import * as awarenessProtocol from "y-protocols/awareness";
 import { getYDoc, WSSharedDoc, closeConn, send } from "./doc";
+import { SlidingWindowRateLimiter } from "./rate-limiter";
+import { config } from "../config";
 
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
@@ -35,10 +37,42 @@ function messageListener(conn: WebSocket, doc: WSSharedDoc, message: Uint8Array)
 
 export async function setupWSConnection(conn: WebSocket, _req: IncomingMessage, roomName: string) {
   conn.binaryType = "arraybuffer";
-  const doc = await getYDoc(roomName);
-  doc.conns.set(conn, new Set());
 
-  conn.on("message", (message: ArrayBuffer) => messageListener(conn, doc, new Uint8Array(message)));
+  // getYDoc() below awaits an HTTP fetch to load persisted state, which takes
+  // real time. A client can send messages the instant its own socket reports
+  // "open" — attaching the message listener only after that await would lose
+  // anything sent in that gap, since Node's EventEmitter doesn't buffer
+  // events for listeners that attach late. Registering synchronously here
+  // and queuing until the doc is ready closes that window.
+  const rateLimiter = new SlidingWindowRateLimiter(config.yjsRateLimitPerSecond, 1000);
+  let droppedSinceLastWarning = 0;
+  const pendingMessages: Uint8Array[] = [];
+  let doc: WSSharedDoc | null = null;
+
+  conn.on("message", (message: ArrayBuffer) => {
+    if (!rateLimiter.tryConsume()) {
+      droppedSinceLastWarning++;
+      if (droppedSinceLastWarning === 1 || droppedSinceLastWarning % 100 === 0) {
+        console.warn(
+          `[yjs] rate limit exceeded for a connection in room "${roomName}" — ${droppedSinceLastWarning} message(s) dropped so far`
+        );
+      }
+      return;
+    }
+    const bytes = new Uint8Array(message);
+    if (doc) {
+      messageListener(conn, doc, bytes);
+    } else {
+      pendingMessages.push(bytes);
+    }
+  });
+
+  doc = await getYDoc(roomName);
+  doc.conns.set(conn, new Set());
+  for (const bytes of pendingMessages) {
+    messageListener(conn, doc, bytes);
+  }
+  pendingMessages.length = 0;
 
   let pongReceived = true;
   const pingInterval = setInterval(() => {
