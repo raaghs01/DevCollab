@@ -37,6 +37,7 @@ import { useYjsRoom } from "@/modules/collaboration/hooks/useYjsRoom";
 import { useSyncedFileTree } from "@/modules/collaboration/hooks/useSyncedFileTree";
 import { useRoomSocket } from "@/modules/collaboration/hooks/useRoomSocket";
 import { useFollowMode } from "@/modules/collaboration/hooks/useFollowMode";
+import { useFileSyncWatcher } from "@/modules/collaboration/hooks/useFileSyncWatcher";
 import { colorForId } from "@/modules/collaboration/lib/color";
 import { getGuestIdentity } from "@/modules/collaboration/lib/guest-identity";
 import { useCurrentUser } from "@/modules/auth/hooks/use-current-user";
@@ -45,6 +46,7 @@ import {
   TemplateFolder,
 } from "@/modules/playground/lib/path-to-json";
 import { useWebContainer } from "@/modules/webcontainers/hooks/useWebContainer";
+import { BrowserCompatibilityBanner } from "@/modules/webcontainers/components/browser-compatibility-banner";
 
 // Monaco (via y-monaco) and xterm.js both touch browser globals (`window`,
 // `self`) at module load time, which crashes Next's SSR pass of this
@@ -152,6 +154,9 @@ const MainPlaygroundPage = () => {
     writeFileSync,
     // @ts-ignore
   } = useWebContainer({ templateData });
+
+  const [isWebContainerSetupComplete, setIsWebContainerSetupComplete] = useState(false);
+  useFileSyncWatcher(ydoc, instance, isWebContainerSetupComplete);
 
   const lastSyncedContent = useRef<Map<string, string>>(new Map());
 
@@ -473,6 +478,7 @@ const MainPlaygroundPage = () => {
           onRenameFolder={wrappedHandleRenameFolder}
         />
         <SidebarInset>
+          <BrowserCompatibilityBanner />
           <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mr-2 h-4" />
@@ -669,6 +675,7 @@ const MainPlaygroundPage = () => {
                                 roomSocket={socket}
                                 roomId={roomId}
                                 isRoomOwner={isOwner}
+                                onSetupComplete={() => setIsWebContainerSetupComplete(true)}
                               />
                             </div>
                             {!isOwner && users.length > 1 && (

@@ -23,6 +23,10 @@ interface WebContainerPreviewProps {
   roomSocket?: Socket | null;
   roomId?: string | null;
   isRoomOwner?: boolean;
+  // Fires once this instance has files mounted and it's safe to write to its
+  // FS from outside (e.g. a collaborative file-sync watcher) without racing
+  // the initial mount/install.
+  onSetupComplete?: () => void;
 }
 const WebContainerPreview = ({
   templateData,
@@ -35,6 +39,7 @@ const WebContainerPreview = ({
   roomSocket,
   roomId,
   isRoomOwner,
+  onSetupComplete,
 }: WebContainerPreviewProps) => {
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [loadingState, setLoadingState] = useState({
@@ -110,6 +115,7 @@ const WebContainerPreview = ({
                 starting: false,
                 ready: true,
               }));
+              onSetupComplete?.();
             });
 
             setCurrentStep(4);
@@ -224,6 +230,7 @@ const WebContainerPreview = ({
           }));
           setIsSetupComplete(true);
           setIsSetupInProgress(false);
+          onSetupComplete?.();
         });
 
         // Handle start process output - stream to terminal
