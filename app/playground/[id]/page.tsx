@@ -152,7 +152,7 @@ const MainPlaygroundPage = () => {
     error: containerError,
     instance,
     writeFileSync,
-    // @ts-ignore
+    // @ts-expect-error - templateData is TemplateFolder | null until it loads, useWebContainer expects TemplateFolder
   } = useWebContainer({ templateData });
 
   const [isWebContainerSetupComplete, setIsWebContainerSetupComplete] = useState(false);
@@ -264,9 +264,9 @@ const MainPlaygroundPage = () => {
           JSON.stringify(latestTemplateData)
         );
 
-        // @ts-ignore
-          const updateFileContent = (items: any[]) =>
-            // @ts-ignore
+          const updateFileContent = (
+            items: (TemplateFile | TemplateFolder)[]
+          ): (TemplateFile | TemplateFolder)[] =>
           items.map((item) => {
             if ("folderName" in item) {
               return { ...item, items: updateFileContent(item.items) };

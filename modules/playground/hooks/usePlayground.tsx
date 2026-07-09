@@ -20,7 +20,7 @@ interface UsePlaygroundReturn {
   error: string | null;
   accessDenied: boolean;
   loadPlayground: () => Promise<void>;
-  saveTemplateData: (data: TemplateFolder) => Promise<void>;
+  saveTemplateData: (data: TemplateFolder) => Promise<TemplateFolder>;
 }
 
 // `idOrRoomId` may be either a playground's own id (dashboard links) or its
@@ -107,6 +107,7 @@ export const usePlayground = (idOrRoomId: string): UsePlaygroundReturn => {
           await SaveUpdatedCode(resolvedId, data);
       setTemplateData(data);
       toast.success("Changes saved successfully");
+      return data;
     } catch (error) {
          console.error("Error saving template data:", error);
       toast.error("Failed to save changes");

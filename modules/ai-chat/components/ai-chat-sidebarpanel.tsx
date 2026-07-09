@@ -512,7 +512,12 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                                                     remarkPlugins={[remarkGfm, remarkMath]}
                                                     rehypePlugins={[rehypeKatex]}
                                                     components={{
-                                                        code: ({ children, className, inline }) => {
+                                                        code: ({ children, className }) => {
+                                                            // react-markdown v9+ dropped the `inline` prop from code
+                                                            // renderers; fenced/block code always carries a
+                                                            // `language-*` class from the syntax highlighter, inline
+                                                            // code never does, so that's the reliable signal now.
+                                                            const inline = !/language-(\w+)/.test(className || "");
                                                             if (inline) {
                                                                 return (
                                                                     <code className="bg-zinc-800 px-1 py-0.5 rounded text-sm">

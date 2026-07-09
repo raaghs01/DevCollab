@@ -46,7 +46,7 @@ interface FileExplorerState {
     parentPath: string,
     writeFileSync: (filePath: string, content: string) => Promise<void>,
     instance: any,
-    saveTemplateData: (data: TemplateFolder) => Promise<void>,
+    saveTemplateData: (data: TemplateFolder) => Promise<TemplateFolder>,
     ydoc?: Y.Doc | null
   ) => Promise<void>;
 
@@ -54,20 +54,20 @@ interface FileExplorerState {
     newFolder: TemplateFolder,
     parentPath: string,
     instance: any,
-    saveTemplateData: (data: TemplateFolder) => Promise<void>,
+    saveTemplateData: (data: TemplateFolder) => Promise<TemplateFolder>,
     ydoc?: Y.Doc | null
   ) => Promise<void>;
 
   handleDeleteFile: (
     file: TemplateFile,
     parentPath: string,
-    saveTemplateData: (data: TemplateFolder) => Promise<void>,
+    saveTemplateData: (data: TemplateFolder) => Promise<TemplateFolder>,
     ydoc?: Y.Doc | null
   ) => Promise<void>;
   handleDeleteFolder: (
     folder: TemplateFolder,
     parentPath: string,
-    saveTemplateData: (data: TemplateFolder) => Promise<void>,
+    saveTemplateData: (data: TemplateFolder) => Promise<TemplateFolder>,
     ydoc?: Y.Doc | null
   ) => Promise<void>;
   handleRenameFile: (
@@ -75,14 +75,14 @@ interface FileExplorerState {
     newFilename: string,
     newExtension: string,
     parentPath: string,
-    saveTemplateData: (data: TemplateFolder) => Promise<void>,
+    saveTemplateData: (data: TemplateFolder) => Promise<TemplateFolder>,
     ydoc?: Y.Doc | null
   ) => Promise<void>;
   handleRenameFolder: (
     folder: TemplateFolder,
     newFolderName: string,
     parentPath: string,
-    saveTemplateData: (data: TemplateFolder) => Promise<void>,
+    saveTemplateData: (data: TemplateFolder) => Promise<TemplateFolder>,
     ydoc?: Y.Doc | null
   ) => Promise<void>;
 

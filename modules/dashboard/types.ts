@@ -1,17 +1,17 @@
 export interface User {
     id: string
-    name: string
+    name: string | null
     email: string
-    image: string
+    image: string | null
     role: string
     createdAt: Date
     updatedAt: Date
   }
-  
+
   export interface Project {
     id: string
     title: string
-    description: string
+    description: string | null
     template: string
     createdAt: Date
     updatedAt: Date
@@ -19,4 +19,3 @@ export interface User {
     user: User
     Starmark: { isMarked: boolean }[]
   }
-  
