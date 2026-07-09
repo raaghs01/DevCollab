@@ -32,11 +32,13 @@ import { findFilePath } from "@/modules/playground/lib";
 import { RemoteCursorStyles } from "@/modules/collaboration/components/remote-cursor-styles";
 import { PresenceSidebar } from "@/modules/collaboration/components/presence-sidebar";
 import { OwnerTerminalFeed } from "@/modules/collaboration/components/owner-terminal-feed";
+import { RoomShareControl } from "@/modules/collaboration/components/room-share-control";
 import { useYjsRoom } from "@/modules/collaboration/hooks/useYjsRoom";
 import { useSyncedFileTree } from "@/modules/collaboration/hooks/useSyncedFileTree";
 import { useRoomSocket } from "@/modules/collaboration/hooks/useRoomSocket";
 import { useFollowMode } from "@/modules/collaboration/hooks/useFollowMode";
 import { colorForId } from "@/modules/collaboration/lib/color";
+import { getGuestIdentity } from "@/modules/collaboration/lib/guest-identity";
 import { useCurrentUser } from "@/modules/auth/hooks/use-current-user";
 import {
   TemplateFile,
@@ -82,16 +84,31 @@ const MainPlaygroundPage = () => {
   const { id } = useParams<{ id: string }>();
   const [isPreviewVisible, setIsPreviewVisible] = useState(true);
 
-  const { playgroundData, templateData, isLoading, error, saveTemplateData } =
+  const { playgroundData, templateData, isLoading, error, accessDenied, saveTemplateData } =
     usePlayground(id);
 
   const currentUser = useCurrentUser();
+  const isGuest = !currentUser;
+  const guestIdentity = isGuest ? getGuestIdentity() : null;
   const roomId = (playgroundData as { roomId?: string } | null)?.roomId ?? null;
-  const identity = {
-    name: currentUser?.name || currentUser?.email || "Guest",
-    color: colorForId(currentUser?.id || currentUser?.email || "guest"),
-    userId: currentUser?.id ?? null,
-  };
+  const [isPublic, setIsPublic] = useState(false);
+  useEffect(() => {
+    if (playgroundData && "isPublic" in playgroundData) {
+      setIsPublic(!!playgroundData.isPublic);
+    }
+  }, [playgroundData]);
+  // Whether *this session's user* owns the Playground record (F8.5 — controls
+  // the private/shared toggle). Distinct from useRoomSocket's `isOwner`,
+  // which is the ephemeral, first-joiner-based "whose WebContainer executes"
+  // role from F5.1 and can belong to anyone in the room.
+  const isPlaygroundOwner = !!playgroundData?.isOwner;
+  const identity = isGuest
+    ? { name: guestIdentity!.name, color: colorForId(guestIdentity!.id), userId: null }
+    : {
+        name: currentUser?.name || currentUser?.email || "Guest",
+        color: colorForId(currentUser?.id || currentUser?.email || "guest"),
+        userId: currentUser?.id ?? null,
+      };
   const { ydoc, awareness } = useYjsRoom(roomId, identity);
   const { socket, users, ownerSocketId, isOwner, wasKicked, kickUser } = useRoomSocket(roomId, identity);
 
@@ -327,12 +344,31 @@ const MainPlaygroundPage = () => {
     const handleKeyDown = (e:KeyboardEvent)=>{
       if(e.ctrlKey && e.key === "s"){
         e.preventDefault()
-        handleSave()
+        if (!isGuest) handleSave()
       }
     }
      window.addEventListener("keydown", handleKeyDown);
      return () => window.removeEventListener("keydown", handleKeyDown);
-  },[handleSave]);
+  },[handleSave, isGuest]);
+
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] p-4">
+        <AlertCircle className="h-12 w-12 text-amber-500 mb-4" />
+        <h2 className="text-xl font-semibold mb-2">This playground is private</h2>
+        <p className="text-gray-600 mb-4">
+          {isGuest
+            ? "Sign in — if you have access, you'll be able to open it."
+            : "Only the owner can access this playground."}
+        </p>
+        {isGuest && (
+          <Button onClick={() => (window.location.href = "/auth/sign-in")}>
+            Sign in
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -453,6 +489,16 @@ const MainPlaygroundPage = () => {
               </div>
 
               <div className="flex items-center gap-1">
+                {roomId && (
+                  <RoomShareControl
+                    playgroundId={playgroundData?.id ?? id}
+                    roomId={roomId}
+                    isPublic={isPublic}
+                    isOwner={isPlaygroundOwner}
+                    onVisibilityChange={setIsPublic}
+                  />
+                )}
+
                 <PresenceSidebar
                   users={users}
                   ownerSocketId={ownerSocketId}
@@ -464,13 +510,19 @@ const MainPlaygroundPage = () => {
                   onKick={kickUser}
                 />
 
+                {isGuest && (
+                  <span className="text-xs text-muted-foreground px-2">
+                    Viewing as guest — sign in to save
+                  </span>
+                )}
+
                 <Tooltip>
                   <TooltipTrigger>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleSave()}
-                      disabled={!activeFile || !activeFile.hasUnsavedChanges}
+                      disabled={isGuest || !activeFile || !activeFile.hasUnsavedChanges}
                     >
                       <Save className="h-4 w-4" />
                     </Button>
@@ -484,7 +536,7 @@ const MainPlaygroundPage = () => {
                       size="sm"
                       variant="outline"
                       onClick={handleSaveAll}
-                      disabled={!hasUnsavedChanges}
+                      disabled={isGuest || !hasUnsavedChanges}
                     >
                       <Save className="h-4 w-4" /> All
                     </Button>

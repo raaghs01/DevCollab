@@ -7,6 +7,9 @@ import { getPlaygroundById, SaveUpdatedCode } from "../actions";
 interface PlaygroundData {
   id: string;
   title?: string;
+  roomId?: string;
+  isPublic?: boolean;
+  isOwner?: boolean;
   [key: string]: any;
 }
 
@@ -15,29 +18,47 @@ interface UsePlaygroundReturn {
   templateData: TemplateFolder | null;
   isLoading: boolean;
   error: string | null;
+  accessDenied: boolean;
   loadPlayground: () => Promise<void>;
   saveTemplateData: (data: TemplateFolder) => Promise<void>;
 }
 
-export const usePlayground = (id: string): UsePlaygroundReturn => {
+// `idOrRoomId` may be either a playground's own id (dashboard links) or its
+// shareable roomId (F8.4 share links) — getPlaygroundById resolves either.
+// Once resolved, the canonical playground.id is used for every subsequent
+// mutation, since save/template operations are keyed by that id, not roomId.
+export const usePlayground = (idOrRoomId: string): UsePlaygroundReturn => {
   const [playgroundData, setPlaygroundData] = useState<PlaygroundData | null>(
     null
   );
   const [templateData, setTemplateData] = useState<TemplateFolder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   const loadPlayground = useCallback(async () => {
-    if (!id) return;
+    if (!idOrRoomId) return;
 
     try {
       setIsLoading(true);
       setError(null);
+      setAccessDenied(false);
 
-      const data = await getPlaygroundById(id);
+      const data = await getPlaygroundById(idOrRoomId);
+
+      if (data && "accessDenied" in data) {
+        setAccessDenied(true);
+        return;
+      }
+
+      if (!data) {
+        setError("Playground not found");
+        return;
+      }
 
       //   @ts-ignore
       setPlaygroundData(data);
+      const resolvedId = data.id;
       const rawContent = data?.templateFiles?.[0]?.content;
 
       if (typeof rawContent === "string") {
@@ -49,7 +70,7 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
 
       //   load template from api if not in saved content
 
-      const res = await fetch(`/api/template/${id}`);
+      const res = await fetch(`/api/template/${resolvedId}`);
 
       if (!res.ok) throw new Error(`Failed to load template: ${res.status}`);
 
@@ -76,13 +97,14 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
     } finally {
       setIsLoading(false);
     }
-  }, [id]);
+  }, [idOrRoomId]);
 
 
 
   const saveTemplateData = useCallback(async(data:TemplateFolder)=>{
+    const resolvedId = playgroundData?.id ?? idOrRoomId;
     try {
-          await SaveUpdatedCode(id, data);
+          await SaveUpdatedCode(resolvedId, data);
       setTemplateData(data);
       toast.success("Changes saved successfully");
     } catch (error) {
@@ -90,7 +112,7 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
       toast.error("Failed to save changes");
       throw error;
     }
-  },[id])
+  },[idOrRoomId, playgroundData?.id])
 
 
   useEffect(()=>{
@@ -102,6 +124,7 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
     templateData,
     isLoading,
     error,
+    accessDenied,
     loadPlayground,
     saveTemplateData,
   };

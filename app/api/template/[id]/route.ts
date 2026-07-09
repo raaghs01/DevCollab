@@ -29,8 +29,8 @@ if(!id){
       return Response.json({ error: "Missing playground ID" }, { status: 400 });
 }
 
-const playground = await db.playground.findUnique({
-    where:{id}
+const playground = await db.playground.findFirst({
+    where:{ OR: [{ id }, { roomId: id }] }
 })
 
   if (!playground) {
